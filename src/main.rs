@@ -389,7 +389,8 @@ impl App {
         self.current_audio = pipeline.property::<i32>("current-audio");
 
         let n_text = pipeline.property::<i32>("n-text");
-        self.text_codes = Vec::with_capacity(n_text as usize);
+        self.text_codes = Vec::with_capacity(1 + n_text as usize);
+        self.text_codes.push(fl!("subtitles-disabled"));
         for i in 0..n_text {
             let tags: gst::TagList = pipeline.emit_by_name("get-text-tags", &[&i]);
             log::info!("text stream {i}: {tags:#?}");
@@ -403,15 +404,16 @@ impl App {
                     format!("Subtitle #{i}")
                 });
         }
-        self.current_text = pipeline.property::<i32>("current-text");
 
-        //TODO: Flags can be used to enable/disable subtitles
+        self.current_text = 0; // Subtitles disabled by default
+
         let flags_value = pipeline.property_value("flags");
         println!("original flags {:?}", flags_value);
         match flags_value.transform::<i32>() {
             Ok(flags_transform) => match flags_transform.get::<i32>() {
                 Ok(mut flags) => {
-                    flags |= GST_PLAY_FLAG_VIDEO | GST_PLAY_FLAG_AUDIO | GST_PLAY_FLAG_TEXT;
+                    flags |= GST_PLAY_FLAG_VIDEO | GST_PLAY_FLAG_AUDIO;
+
                     match gst::glib::Value::from(flags).transform_with_type(flags_value.type_()) {
                         Ok(value) => pipeline.set_property("flags", value),
                         Err(err) => {
@@ -1118,11 +1120,44 @@ impl Application for App {
                 }
             }
             Message::TextCode(code) => {
-                if let Ok(code) = i32::try_from(code) {
-                    if let Some(video) = &self.video_opt {
-                        let pipeline = video.pipeline();
-                        pipeline.set_property("current-text", code);
-                        self.current_text = pipeline.property("current-text");
+                if let Some(video) = &self.video_opt {
+                    let pipeline = video.pipeline();
+
+                    if code == 0 {
+                        pipeline.set_property("current-text", -1);
+                        self.current_text = 0;
+                    } else if let Ok(code) = i32::try_from(code) {
+                        pipeline.set_property("current-text", code - 1);
+                        self.current_text = 1 + pipeline.property::<i32>("current-text");
+                    }
+
+                    let flags_value = pipeline.property_value("flags");
+                    println!("original flags {:?}", flags_value);
+                    match flags_value.transform::<i32>() {
+                        Ok(flags_transform) => match flags_transform.get::<i32>() {
+                            Ok(mut flags) => {
+                                flags |= GST_PLAY_FLAG_TEXT;
+
+                                if self.current_text == 0 {
+                                    flags &= !GST_PLAY_FLAG_TEXT;
+                                }
+
+                                match gst::glib::Value::from(flags)
+                                    .transform_with_type(flags_value.type_())
+                                {
+                                    Ok(value) => pipeline.set_property("flags", value),
+                                    Err(err) => {
+                                        log::warn!("failed to transform int to flags: {err}");
+                                    }
+                                }
+                            }
+                            Err(err) => {
+                                log::warn!("failed to get flags as int: {err}");
+                            }
+                        },
+                        Err(err) => {
+                            log::warn!("failed to transform flags to int: {err}");
+                        }
                     }
                 }
             }
