@@ -10,11 +10,23 @@ use std::{collections::HashMap, path::PathBuf};
 use crate::{fl, Action, Config, ConfigState, Message};
 
 pub fn menu_bar<'a>(
-    config: &Config,
+    _config: &Config,
     config_state: &ConfigState,
     key_binds: &HashMap<KeyBind, Action>,
     projects: &Vec<(String, PathBuf)>,
 ) -> Element<'a, Message> {
+    MenuBar::new(vec![file_menu(config_state, key_binds, projects)])
+        .item_height(ItemHeight::Dynamic(40))
+        .item_width(ItemWidth::Uniform(320))
+        .spacing(theme::active().cosmic().spacing.space_xxxs.into())
+        .into()
+}
+
+fn file_menu<'a>(
+    config_state: &ConfigState,
+    key_binds: &HashMap<KeyBind, Action>,
+    projects: &Vec<(String, PathBuf)>,
+) -> menu::Tree<'a, Message> {
     let home_dir_opt = dirs::home_dir();
     let format_path = |path: &PathBuf| -> String {
         if let Some(home_dir) = &home_dir_opt {
@@ -55,7 +67,7 @@ pub fn menu_bar<'a>(
         ));
     }
 
-    MenuBar::new(vec![menu::Tree::with_children(
+    menu::Tree::with_children(
         menu::root(fl!("file")),
         menu::items(
             key_binds,
@@ -71,9 +83,5 @@ pub fn menu_bar<'a>(
                 menu::Item::Button(fl!("quit"), Action::WindowClose),
             ],
         ),
-    )])
-    .item_height(ItemHeight::Dynamic(40))
-    .item_width(ItemWidth::Uniform(320))
-    .spacing(theme::active().cosmic().spacing.space_xxxs.into())
-    .into()
+    )
 }
